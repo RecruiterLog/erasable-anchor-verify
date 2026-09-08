@@ -226,16 +226,44 @@ async function main(argv) {
       return 1;
     }
     if (!res.ok) {
-      console.error(`error: proof endpoint returned ${res.status}`);
+      // A 404 is the publisher saying "no such record", which is a different
+      // situation from a server fault and deserves a different sentence. Left
+      // as an exit 1 either way: the caller asked about a record and did not
+      // get an answer about it.
+      const body = await res.json().catch(() => null);
+      if (res.status === 404) {
+        console.error(
+          `error: no record with id ${opts.recordId}.` +
+            (body?.detail ? ` ${body.detail}` : "") +
+            "\n       Check the id. Ids come from the publisher's ledger listing."
+        );
+      } else {
+        console.error(`error: proof endpoint returned ${res.status}`);
+      }
       return 1;
     }
     p = await res.json();
   }
 
   if (p.anchored === false) {
-    say(`This record is not anchored yet${p.reason ? ` (${p.reason})` : ""}.`);
+    // Each reason means something different to whoever is standing here, so
+    // say which. "Not anchored" covering four situations is how people end up
+    // waiting for something that will never happen.
+    const REASONS = {
+      not_yet_anchored:
+        "This record is not anchored yet. Records anchor on the next daily run\n" +
+        "   after they settle, so a recent one is expected to look like this.",
+      batch_pending:
+        "This record's leaf is frozen, but the batch it belongs to has not been\n" +
+        "   confirmed on chain yet. Try again after the next run.",
+      unknown_record: "No record has that id. Check the id.",
+      not_configured: "The publisher has not configured anchoring, so there is nothing to check.",
+    };
+    say(REASONS[p.reason] || `This record is not anchored${p.reason ? ` (${p.reason})` : ""}.`);
     if (opts.json) console.log(JSON.stringify({ anchored: false, reason: p.reason ?? null }, null, 2));
-    return 0;
+    // Exit 0: "not anchored yet" is a correct answer to the question, not a
+    // failure of verification. Only a record that fails to verify is exit 1.
+    return p.reason === "unknown_record" ? 1 : 0;
   }
 
   const facts = p.facts ?? p.snapshot;

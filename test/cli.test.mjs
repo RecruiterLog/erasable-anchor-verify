@@ -171,11 +171,48 @@ test("a malformed proof step is reported, not thrown as a stack trace", async ()
   assert.doesNotMatch(r.stderr, /at .*verify-anchor\.mjs/);
 });
 
-test("an unanchored record is reported as such, and is not a failure", () => {
-  const path = writeProof("pending.json", { anchored: false, reason: "not settled yet" });
+test("a record awaiting its first anchor is not a failure", () => {
+  // Exit 0, because "not anchored yet" is a correct answer to the question
+  // rather than a failed verification.
+  const path = writeProof("pending.json", { anchored: false, reason: "not_yet_anchored" });
   const r = run("--proof", path);
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /not anchored yet \(not settled yet\)/);
+  assert.match(r.stdout, /not anchored yet/);
+  assert.match(r.stdout, /next daily run/, "says when to expect it, rather than just no");
+});
+
+test("a record whose batch has not confirmed says so specifically", () => {
+  const path = writeProof("batch.json", { anchored: false, reason: "batch_pending" });
+  const r = run("--proof", path);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /leaf is frozen/);
+  assert.match(r.stdout, /not been\s+confirmed on chain/);
+});
+
+test("an id that names nothing is a failure, not a wait", () => {
+  // The distinction this whole change exists for. Reporting a typo'd id as
+  // "not anchored yet" tells someone to wait for something that will never
+  // happen, and it is the first thing a reviewer will hit if they mistype.
+  const path = writeProof("unknown.json", { anchored: false, reason: "unknown_record" });
+  const r = run("--proof", path);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /No record has that id/);
+});
+
+test("a publisher with anchoring switched off says that, rather than failing", () => {
+  const path = writeProof("off.json", { anchored: false, reason: "not_configured" });
+  const r = run("--proof", path);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /has not configured anchoring/);
+});
+
+test("an unrecognised reason still produces a sensible line", () => {
+  // A publisher may add a reason this verifier has never heard of. Falling
+  // back to the raw value beats printing nothing.
+  const path = writeProof("odd.json", { anchored: false, reason: "some_future_reason" });
+  const r = run("--proof", path);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /some_future_reason/);
 });
 
 test("a missing proof file is a usage error with a readable message", () => {
