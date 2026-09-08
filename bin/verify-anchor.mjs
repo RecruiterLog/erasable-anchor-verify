@@ -330,5 +330,19 @@ async function main(argv) {
 // Run only when invoked directly, so the hashing functions above can be
 // imported and cross-checked against another implementation.
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-  process.exit(await main(process.argv.slice(2)));
+  // Set the code and let the process wind down, rather than calling
+  // process.exit().
+  //
+  // process.exit() tears down while libuv still has handles closing, and on
+  // Windows that aborts with "Assertion failed: !(handle->flags &
+  // UV_HANDLE_CLOSING)" AFTER the verdict has already printed, replacing the
+  // exit code with 0xC0000409. The output looks right and the exit code is
+  // meaningless, which is the worst combination for a tool whose entire
+  // interface in CI is its exit code.
+  //
+  // fetch keeps a pooled connection alive, which would hold the loop open, so
+  // the timer is the backstop: unref'd so it never delays a clean exit, and
+  // if anything is still lingering a moment later we leave anyway.
+  process.exitCode = await main(process.argv.slice(2));
+  setTimeout(() => process.exit(process.exitCode), 250).unref();
 }
