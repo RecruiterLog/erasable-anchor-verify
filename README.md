@@ -7,6 +7,43 @@ proofs: a Web Crypto module for the browser, and a zero-dependency CLI.
 npx erasable-anchor-verify <record-id>
 ```
 
+## Check a live record yourself, in thirty seconds
+
+No install, no clone, no account, and no cooperation from RecruiterLog beyond
+the data they serve:
+
+```bash
+curl -sO https://raw.githubusercontent.com/RecruiterLog/erasable-anchor-verify/main/bin/verify-anchor.mjs
+node verify-anchor.mjs f9ab4eff-01d5-49ef-a682-9b457b9e6d94
+```
+
+One file, about 12 kB, no dependencies beyond Node's built-in `crypto` and
+`fetch`. **Read it before you run it.** It is deliberately short enough to read
+in full, and a verifier you have not read is just a second opinion from a
+stranger.
+
+You should see the record's leaf recomputed from its own content, the proof
+walked to a root, and that root read back off Solana mainnet from a public RPC
+node rather than from RecruiterLog:
+
+```
+memo: rl:v1:2026-09-07:ee0885119c798d763c2930ba6df749aecbb19d25cb69c3c9e9d...
+OK    the record's content still hashes to its published leaf
+OK    the leaf is genuinely part of the claimed tree
+OK    the root we computed is the root published on chain
+VERIFIED. This record is unchanged since it was anchored.
+```
+
+Exit code 0 for verified, 1 for failed. To pick your own record rather than
+ours, take any id from [recruiterlog.com/ledger](https://recruiterlog.com/ledger);
+records anchor on the next daily run after they settle, so a recent one may
+report that it is not anchored yet, which is a correct answer rather than a
+failure.
+
+If you would rather not trust a single RPC provider, pass `--rpc` with an
+endpoint of your choosing. The proof is fetched from RecruiterLog because only
+they hold it; the root is not.
+
 ## Why this is a separate package
 
 A verifier that imported the library it checks would be confirming that
