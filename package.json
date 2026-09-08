@@ -1,0 +1,48 @@
+{
+  "name": "erasable-anchor-verify",
+  "version": "0.1.0",
+  "description": "Independent verifiers for erasable-anchor proofs: a Web Crypto module for the browser and a zero-dependency CLI.",
+  "license": "Apache-2.0",
+  "author": "RecruiterLog",
+  "homepage": "https://github.com/RecruiterLog/erasable-anchor-verify",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RecruiterLog/erasable-anchor-verify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RecruiterLog/erasable-anchor-verify/issues"
+  },
+  "keywords": [
+    "merkle",
+    "merkle-proof",
+    "verifier",
+    "anchoring",
+    "solana",
+    "web-crypto",
+    "tamper-evident",
+    "erasable-anchor"
+  ],
+  "type": "module",
+  "types": "./src/browser.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/browser.d.ts",
+      "default": "./src/browser.mjs"
+    }
+  },
+  "bin": {
+    "verify-anchor": "./bin/verify-anchor.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

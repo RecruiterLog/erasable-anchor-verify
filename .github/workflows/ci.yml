@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, for the drift job below. Nothing here depends on the clock.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `cache: npm` and no install step: this package has no dependencies,
+      # and the test runner is Node's own.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - run: npm test
+
+  vectors-drift:
+    # Informational, and deliberately not a gate on pull requests. The vectors
+    # are copied from erasable-anchor rather than imported, which is the point
+    # of this package, and the cost of that choice is that the copy can fall
+    # behind. This job is how we find out, rather than discovering it when a
+    # real proof fails to verify for somebody.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare test/vectors.json against erasable-anchor
+        run: |
+          curl -fsSL -o upstream.json \
+            https://raw.githubusercontent.com/RecruiterLog/erasable-anchor/main/test/vectors.json
+          if diff -q upstream.json test/vectors.json; then
+            echo "vectors are in step with erasable-anchor"
+          else
+            echo "::warning::test/vectors.json differs from erasable-anchor's copy."
+            echo "Either the spec moved, in which case update this copy and check both"
+            echo "verifiers still pass, or the upstream file changed by mistake."
+            diff upstream.json test/vectors.json || true
+            exit 1
+          fi

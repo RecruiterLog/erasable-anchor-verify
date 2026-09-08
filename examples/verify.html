@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify an anchor</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #16181d;
+    --muted: #5c6270;
+    --line: #e2e3e0;
+    --ok: #17693f;
+    --bad: #a1232b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1b1e24;
+      --ink: #e9eaec;
+      --muted: #98a0ae;
+      --line: #2b3039;
+      --ok: #5fcf92;
+      --bad: #ef8b90;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1.25rem 4rem;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  p.lede { color: var(--muted); margin: 0 0 1.75rem; max-width: 34rem; }
+  label { display: block; font-weight: 600; margin-bottom: .4rem; font-size: .82rem;
+          text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  textarea, input {
+    width: 100%; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); color: var(--ink); font-family: var(--mono); font-size: 13px;
+  }
+  textarea { min-height: 11rem; resize: vertical; }
+  .row { display: flex; gap: .6rem; flex-wrap: wrap; margin: 1rem 0 0; }
+  button {
+    padding: .6rem 1.1rem; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--ink); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: var(--panel); color: var(--ink); font-weight: 500; }
+  button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+  ul { list-style: none; padding: 0; margin: 1.5rem 0 0; }
+  li { border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+       padding: .75rem .9rem; margin-bottom: .55rem; }
+  .mark { font-weight: 700; margin-right: .5rem; font-family: var(--mono); }
+  .ok .mark { color: var(--ok); }
+  .bad .mark { color: var(--bad); }
+  .detail { display: block; color: var(--muted); font-family: var(--mono); font-size: 12px;
+            margin-top: .3rem; overflow-wrap: anywhere; }
+  .verdict { margin-top: 1.25rem; padding: .9rem 1rem; border-radius: 8px;
+             border: 1px solid var(--line); background: var(--panel); font-weight: 600; }
+  .verdict.ok { color: var(--ok); }
+  .verdict.bad { color: var(--bad); }
+  footer { margin-top: 2.5rem; color: var(--muted); font-size: .86rem; }
+  code { font-family: var(--mono); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Verify an anchor</h1>
+  <p class="lede">
+    Every hash below is recomputed in this page, by your browser. Nothing here
+    asks anyone whether a record is valid.
+  </p>
+
+  <label for="doc">Proof document (JSON)</label>
+  <textarea id="doc" spellcheck="false" placeholder='{ "facts": { ... }, "salt": "...", "leafHash": "...", "proof": [ ... ], "merkleRoot": "..." }'></textarea>
+
+  <div class="row">
+    <button id="go">Verify</button>
+    <button id="sample" class="secondary">Load a sample</button>
+  </div>
+
+  <ul id="checks"></ul>
+  <div id="verdict" hidden class="verdict"></div>
+
+  <footer>
+    <p>
+      A passing result shows this content was included in a tree whose root was
+      published, and has not been altered since. It does not show the batch was
+      complete: nothing on a ledger can prove records were never withheld
+      before publication.
+    </p>
+    <p>
+      Add <code>onChainMemo</code> to the document, read from the transaction
+      yourself, to check the computed root against what was actually published.
+      Without it the checks show internal consistency only.
+    </p>
+  </footer>
+</main>
+
+<script type="module">
+import { verifyAnchor, buildLeaf, hashPair } from "../src/browser.mjs";
+
+const $ = (id) => document.getElementById(id);
+const checksEl = $("checks");
+const verdictEl = $("verdict");
+
+function render(checks) {
+  checksEl.replaceChildren(
+    ...checks.map((c) => {
+      const li = document.createElement("li");
+      li.className = c.ok ? "ok" : "bad";
+      const mark = document.createElement("span");
+      mark.className = "mark";
+      mark.textContent = c.ok ? "OK" : "NO";
+      li.append(mark, document.createTextNode(c.label));
+      if (c.detail) {
+        const d = document.createElement("span");
+        d.className = "detail";
+        d.textContent = c.detail;
+        li.append(d);
+      }
+      return li;
+    })
+  );
+
+  const failed = checks.some((c) => !c.ok);
+  verdictEl.hidden = false;
+  verdictEl.className = "verdict " + (failed ? "bad" : "ok");
+  verdictEl.textContent = failed
+    ? "Verification failed. This record does not match what was published."
+    : "Verified. This record is unchanged since it was anchored.";
+}
+
+$("go").addEventListener("click", async () => {
+  let doc;
+  try {
+    doc = JSON.parse($("doc").value);
+  } catch (err) {
+    render([{ label: "Parse the proof document", ok: false, detail: err.message }]);
+    return;
+  }
+  try {
+    render(await verifyAnchor(doc));
+  } catch (err) {
+    render([{ label: "Verify", ok: false, detail: err.message }]);
+  }
+});
+
+// A real, self consistent proof, built here rather than pasted in as a
+// literal, so it cannot drift out of agreement with the hashing rules.
+$("sample").addEventListener("click", async () => {
+  const records = [
+    { facts: { v: 1, recordId: "r0", status: "Closed/Resolved", responseTimeDays: 2 }, salt: "0".repeat(64) },
+    { facts: { v: 1, recordId: "r1", status: "Ghosted", responseTimeDays: null }, salt: "1".repeat(64) },
+    { facts: { v: 1, recordId: "r2", status: "Closed/Resolved", responseTimeDays: 9 }, salt: "2".repeat(64) },
+  ];
+  for (const r of records) r.leaf = await buildLeaf(r.facts, r.salt);
+
+  const leaves = records.map((r) => r.leaf).sort();
+  const levels = [leaves];
+  while (levels.at(-1).length > 1) {
+    const prev = levels.at(-1);
+    const next = [];
+    for (let i = 0; i < prev.length; i += 2) {
+      next.push(await hashPair(prev[i], i + 1 < prev.length ? prev[i + 1] : prev[i]));
+    }
+    levels.push(next);
+  }
+
+  const target = records[0];
+  const proof = [];
+  let i = leaves.indexOf(target.leaf);
+  for (let level = 0; level < levels.length - 1; level++) {
+    const nodes = levels[level];
+    const isRight = i % 2 === 1;
+    const sib = isRight ? i - 1 : i + 1;
+    proof.push({ hash: sib < nodes.length ? nodes[sib] : nodes[i], position: isRight ? "left" : "right" });
+    i = Math.floor(i / 2);
+  }
+
+  $("doc").value = JSON.stringify(
+    {
+      recordId: target.facts.recordId,
+      facts: target.facts,
+      salt: target.salt,
+      leafHash: target.leaf,
+      proof,
+      merkleRoot: levels.at(-1)[0],
+      leafCount: records.length,
+      period: "2026-09-08",
+    },
+    null,
+    2
+  );
+  checksEl.replaceChildren();
+  verdictEl.hidden = true;
+});
+</script>
+</body>
+</html>
