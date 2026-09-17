@@ -9,6 +9,18 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+# Least privilege, which is what CodeQL's "Workflow does not contain
+# permissions" alert asks for. A workflow with no permissions block inherits
+# the repository default, and that default can be read and write on every
+# scope, so a compromised action or a malicious dependency in a pull request
+# would be handed a token that can push to this repository.
+#
+# Nothing here pushes, comments, cuts a release or reads a secret. The drift
+# job fetches a file over plain https and diffs it, which needs no token at
+# all. Reading the code is the entire need, so that is all the token gets.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
